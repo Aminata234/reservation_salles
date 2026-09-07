@@ -1857,3 +1857,200 @@ Tag :
 ```text
 v0.4.0
 ```
+
+## Étape 5 — Créer la validation
+
+### Travail demandé
+
+Un système de validation a été créé dans :
+
+```text
+src/Validation/
+├── ValidatorInterface.php
+├── ValidationResult.php
+├── SalleValidator.php
+└── ReservationValidator.php
+```
+
+La validation utilise la bibliothèque `Respect\Validation`.
+
+### ValidatorInterface
+
+`ValidatorInterface` définit un contrat commun pour tous les validateurs :
+
+```php
+interface ValidatorInterface
+{
+    public function validate(array $data): ValidationResult;
+}
+```
+
+Les classes `SalleValidator` et `ReservationValidator` implémentent cette interface.
+
+### ValidationResult
+
+`ValidationResult` représente le résultat d'une validation.
+
+Il permet de :
+
+* savoir si les données sont valides avec `isValid()` ;
+* récupérer les erreurs avec `errors()` ;
+* récupérer les données avec `data()`.
+
+Exemple :
+
+```php
+$resultat = $validator->validate($data);
+
+if (!$resultat->isValid()) {
+    $errors = $resultat->errors();
+}
+```
+
+### SalleValidator
+
+Les règles appliquées à une salle sont :
+
+| Champ      | Règle                           |
+| ---------- | ------------------------------- |
+| `nom`      | obligatoire, 2 à 100 caractères |
+| `batiment` | obligatoire, 2 à 100 caractères |
+| `capacite` | entier compris entre 1 et 1000  |
+| `type`     | valeur autorisée                |
+| `active`   | booléen                         |
+
+Les types autorisés sont :
+
+```text
+cours
+informatique
+laboratoire
+amphitheatre
+reunion
+```
+
+### ReservationValidator
+
+Les règles appliquées à une réservation sont :
+
+| Champ         | Règle                |
+| ------------- | -------------------- |
+| `salle_id`    | entier positif       |
+| `responsable` | 2 à 120 caractères   |
+| `email`       | adresse email valide |
+| `motif`       | 5 à 255 caractères   |
+| `date_debut`  | date valide          |
+| `date_fin`    | date valide          |
+
+La comparaison entre `date_debut` et `date_fin` n'est pas effectuée par le validateur.
+
+Cette vérification appartient aux règles métier et sera réalisée dans la couche Service.
+
+### Pourquoi séparer la validation syntaxique des règles métier ?
+
+La validation syntaxique vérifie que les données ont une forme correcte.
+
+Exemples :
+
+```text
+email → adresse email valide
+capacite → entier
+nom → longueur correcte
+date_debut → date valide
+```
+
+Les règles métier vérifient si les données respectent les règles de fonctionnement de l'application.
+
+Exemples :
+
+```text
+date_fin doit être après date_debut
+une salle ne doit pas avoir deux réservations qui se chevauchent
+une salle inactive ne peut pas être réservée
+```
+
+Cette séparation permet à chaque couche d'avoir une responsabilité claire.
+
+### Pourquoi créer une interface de validation ?
+
+L'interface impose un contrat commun aux différents validateurs.
+
+Ainsi, `SalleValidator` et `ReservationValidator` possèdent tous les deux la méthode :
+
+```php
+validate(array $data): ValidationResult
+```
+
+Cela rend l'organisation du code plus cohérente et facilite son évolution.
+
+### Pourquoi le validateur ne doit-il pas enregistrer les données ?
+
+Le validateur a une seule responsabilité :
+
+> vérifier les données.
+
+Il ne doit donc pas enregistrer de données dans la base de données.
+
+L'enregistrement sera effectué plus tard par les couches responsables de cette opération, notamment le Service et le Repository.
+
+Cela respecte le principe de séparation des responsabilités.
+
+### Comment retourner plusieurs erreurs en une seule fois ?
+
+Les erreurs sont stockées dans un tableau :
+
+```php
+$errors = [];
+```
+
+Chaque erreur est associée au champ concerné :
+
+```php
+$errors[$field] = 'La valeur de ce champ est invalide.';
+```
+
+Toutes les erreurs sont ensuite transmises à `ValidationResult`.
+
+Ainsi, plusieurs champs incorrects peuvent être signalés lors d'une seule validation.
+
+### Tests effectués
+
+Les quatre classes ont été vérifiées avec PHP :
+
+```bash
+php -l src/Validation/ValidatorInterface.php
+php -l src/Validation/ValidationResult.php
+php -l src/Validation/SalleValidator.php
+php -l src/Validation/ReservationValidator.php
+```
+
+Des tests ont également été réalisés avec :
+
+* une salle valide ;
+* une salle contenant plusieurs erreurs ;
+* une réservation valide ;
+* une réservation contenant plusieurs erreurs.
+
+Les validateurs retournent correctement un `ValidationResult`.
+
+### Dépendance utilisée
+
+La validation utilise :
+
+```text
+respect/validation:^2.4
+```
+
+### Versionnement
+
+Branche :
+
+```text
+feature/05-validation
+```
+
+Tag :
+
+```text
+v0.5.0
+```
