@@ -1730,6 +1730,10 @@ Cela permet de manipuler et de comparer les dates plus facilement dans PHP.
 Cette conversion sera particulièrement utile pour les règles métier concernant les réservations, comme la vérification de la durée ou des chevauchements entre réservations.
 
 
+
+
+
+
 ## Étape 4 — Ajouter les données initiales
 
 ### Travail demandé
