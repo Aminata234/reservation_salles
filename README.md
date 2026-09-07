@@ -975,9 +975,11 @@ git tag v0.2.0
 
 ---
 
-# Versionnement de l'étape 2
+## Étape 2 — Configuration d’Eloquent et de la base de données
 
-## Branche
+Cette étape consiste à connecter l'application PHP à MySQL avec Eloquent, à charger les variables d'environnement et à créer la structure initiale de la base de données.
+
+### Branche
 
 ```text
 feature/02-eloquent
@@ -985,38 +987,869 @@ feature/02-eloquent
 
 Cette branche permet de réaliser la configuration de la base de données et d'Eloquent sans modifier directement la branche principale.
 
-## Tag
+### Configuration des variables d'environnement
 
-```text
-v0.2.0
+Création du fichier `.env.example` :
+
+```env
+APP_ENV=development
+APP_DEBUG=true
+
+DB_DRIVER=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=reservation_salles
+DB_USERNAME=root
+DB_PASSWORD=
 ```
 
-Ce tag représentera la version du projet après la réalisation complète de l'étape 2.
+Le fichier `.env` contient les valeurs réellement utilisées en local.
 
-## Commits
+Il ne doit pas être versionné. Il est donc ajouté au `.gitignore`.
 
-Les commits peuvent être organisés ainsi :
+```gitignore
+.env
+/vendor/
+```
+
+Le fichier `.env.example` est versionné afin de montrer les variables nécessaires à la configuration du projet sans exposer les informations sensibles.
+
+### Installation des dépendances
+
+Eloquent et Dotenv sont installés avec Composer :
+
+```bash
+composer require illuminate/database:^12.0
+composer require vlucas/phpdotenv
+```
+
+L'option `-W` a été utilisée lors du changement de version d'Eloquent afin de permettre à Composer d'adapter les dépendances déjà présentes dans `composer.lock` :
+
+```bash
+composer require illuminate/database:^12.0 -W
+```
+
+La version utilisée respecte la version demandée dans le guide du projet :
+
+```text
+illuminate/database ^12.0
+```
+
+### Chargement des variables d'environnement
+
+Le package `vlucas/phpdotenv` permet de charger les variables présentes dans `.env`.
+
+Dans `config/database.php` :
+
+```php
+$dotenv = Dotenv::createImmutable(dirname(__DIR__));
+$dotenv->load();
+```
+
+Les informations de connexion sont ensuite récupérées depuis `$_ENV`.
+
+Cela permet de ne pas écrire directement les informations de connexion dans le code PHP.
+
+### Configuration d'Eloquent
+
+Eloquent est utilisé sans Laravel grâce à :
+
+```php
+Illuminate\Database\Capsule\Manager
+```
+
+Dans `config/database.php`, une instance de `Capsule` est créée :
+
+```php
+$capsule = new Capsule();
+```
+
+La connexion MySQL est ensuite configurée :
+
+```php
+$capsule->addConnection([
+    'driver' => $_ENV['DB_DRIVER'],
+    'host' => $_ENV['DB_HOST'],
+    'port' => $_ENV['DB_PORT'],
+    'database' => $_ENV['DB_DATABASE'],
+    'username' => $_ENV['DB_USERNAME'],
+    'password' => $_ENV['DB_PASSWORD'],
+    'charset' => 'utf8mb4',
+    'collation' => 'utf8mb4_unicode_ci',
+    'prefix' => '',
+]);
+```
+
+Eloquent est ensuite rendu disponible et démarré :
+
+```php
+$capsule->setAsGlobal();
+$capsule->bootEloquent();
+```
+
+### Vérification de la connexion
+
+La connexion a d'abord été testée avec un script temporaire.
+
+La première tentative a donné :
+
+```text
+Erreur de connexion : could not find driver
+```
+
+Cela venait de l'absence du pilote PHP `pdo_mysql`.
+
+Le pilote a été installé avec :
+
+```bash
+sudo apt install php8.3-mysql
+```
+
+La présence du pilote a ensuite été vérifiée :
+
+```bash
+php -m | grep -E 'PDO|pdo_mysql|mysqli'
+```
+
+Résultat :
+
+```text
+mysqli
+PDO
+pdo_mysql
+```
+
+La connexion Eloquent a ensuite été vérifiée avec succès :
+
+```text
+Connexion à la base de données réussie !
+```
+
+Le script de test temporaire a ensuite été supprimé.
+
+### Création des tables
+
+La structure de la base de données est créée avec le Schema Builder d'Eloquent.
+
+La migration se trouve dans :
+
+```text
+database/
+└── migrations/
+    └── 001_create_salles_and_reservations.php
+```
+
+La migration crée deux tables :
+
+```text
+salles
+reservations
+```
+
+La table `salles` contient :
+
+```text
+id
+nom
+batiment
+capacite
+type
+active
+created_at
+updated_at
+```
+
+La table `reservations` contient :
+
+```text
+id
+salle_id
+responsable
+email
+motif
+date_debut
+date_fin
+statut
+created_at
+updated_at
+```
+
+La colonne `salle_id` est une clé étrangère vers `salles.id`.
+
+La relation est donc :
+
+```text
+salles
+   1
+   |
+   |
+   *
+reservations
+```
+
+Une salle peut donc posséder plusieurs réservations.
+
+### Exécution de la migration
+
+La migration est exécutée avec :
+
+```bash
+php database/migrations/001_create_salles_and_reservations.php
+```
+
+Résultat :
+
+```text
+Tables créées avec succès.
+```
+
+La présence des tables a ensuite été vérifiée dans MySQL :
+
+```sql
+SHOW TABLES;
+```
+
+Résultat :
+
+```text
+reservations
+salles
+```
+
+La structure des tables a également été vérifiée avec :
+
+```sql
+DESCRIBE salles;
+DESCRIBE reservations;
+```
+
+### Pourquoi les règles métier ne sont pas dans la migration
+
+La migration définit principalement la structure de la base de données.
+
+Les règles métier du projet seront traitées dans la couche `Service`.
+
+Par exemple :
+
+* une salle doit exister ;
+* une salle doit être active ;
+* la date de début doit être avant la date de fin ;
+* une réservation ne doit pas dépasser 4 heures ;
+* la réservation doit commencer dans le futur ;
+* deux réservations confirmées d'une même salle ne doivent pas se chevaucher.
+
+Ces règles ne sont donc pas placées dans la migration. Elles seront implémentées lors de l'étape consacrée aux services.
+
+### Résumé de l'architecture réalisée
+
+```text
+.env
+  ↓
+Dotenv
+  ↓
+config/database.php
+  ↓
+Capsule
+  ↓
+Eloquent
+  ↓
+Schema Builder
+  ↓
+MySQL
+  ↓
+salles + reservations
+```
+
+### Versionnement
+
+#### Branche
+
+```text
+feature/02-eloquent
+```
+
+#### Commits
+
+Les modifications de l'étape peuvent être organisées avec les commits suivants :
 
 ```text
 chore: configurer les variables d'environnement
 ```
 
-Configuration de `.env.example` et du système de variables d'environnement.
+Configuration de `.env.example`, `.env` et du `.gitignore`.
 
 ```text
 chore: installer les dépendances Eloquent
 ```
 
-Installation de `illuminate/database` et `vlucas/phpdotenv`.
+Installation d'Eloquent et de Dotenv avec Composer.
 
 ```text
 chore: configurer Eloquent
 ```
 
-Configuration de `Capsule\Manager` et démarrage d'Eloquent.
+Configuration de `Capsule\Manager`, chargement des variables d'environnement et démarrage d'Eloquent.
+
+```text
+feat: créer les tables de réservation
+```
+
+Création de la migration et des tables `salles` et `reservations`.
 
 ```text
 docs: documenter la configuration Eloquent
 ```
 
-Documentation des commandes et des choix réalisés pendant l'étape 2.
+Documentation des commandes utilisées et des choix réalisés pendant l'étape 2.
+
+#### Tag
+
+```text
+v0.2.0
+```
+
+Le tag `v0.2.0` représente l'état du projet après la réalisation complète de l'étape 2.
+
+
+
+# Étape 3 — Modèles Eloquent
+
+## Objectif
+
+Cette étape consiste à créer les modèles Eloquent correspondant aux tables de la base de données :
+
+* `Salle` pour la table `salles`
+* `Reservation` pour la table `reservations`
+
+Les modèles permettent à l'application PHP de manipuler les données de la base de données avec Eloquent ORM.
+
+---
+
+## Branche
+
+La branche utilisée pour cette étape est :
+
+```text
+feature/03-modeles
+```
+
+Création de la branche :
+
+```bash
+git switch -c feature/03-modeles
+```
+
+---
+
+## Modèle `Salle`
+
+Fichier :
+
+```text
+src/Model/Salle.php
+```
+
+Le modèle représente la table `salles`.
+
+```php
+<?php
+
+namespace App\Model;
+
+use Illuminate\Database\Eloquent\Model;
+
+final class Salle extends Model
+{
+    protected $table = 'salles';
+
+    protected $fillable = [
+        'nom',
+        'batiment',
+        'capacite',
+        'type',
+        'active',
+    ];
+
+    protected $casts = [
+        'capacite' => 'integer',
+        'active' => 'boolean',
+    ];
+
+    public function reservations()
+    {
+        return $this->hasMany(Reservation::class);
+    }
+}
+```
+
+### `final`
+
+La classe est déclarée `final` car nous ne prévoyons pas qu'une autre classe hérite de `Salle`.
+
+```php
+final class Salle extends Model
+```
+
+La classe `Salle` hérite cependant de la classe `Model` d'Eloquent :
+
+```php
+class Salle extends Model
+```
+
+`Model` fournit les fonctionnalités permettant à Eloquent de communiquer avec la table de base de données.
+
+---
+
+## `$table`
+
+```php
+protected $table = 'salles';
+```
+
+Cette propriété indique explicitement à Eloquent que le modèle `Salle` utilise la table :
+
+```text
+salles
+```
+
+---
+
+## `$fillable`
+
+```php
+protected $fillable = [
+    'nom',
+    'batiment',
+    'capacite',
+    'type',
+    'active',
+];
+```
+
+`$fillable` définit les champs qui peuvent être remplis automatiquement par Eloquent.
+
+Les champs `id`, `created_at` et `updated_at` ne sont pas inclus.
+
+---
+
+## `$casts`
+
+```php
+protected $casts = [
+    'capacite' => 'integer',
+    'active' => 'boolean',
+];
+```
+
+Les casts permettent à Eloquent de convertir automatiquement les valeurs dans le type attendu.
+
+Par exemple :
+
+* `capacite` devient un entier ;
+* `active` devient un booléen.
+
+---
+
+## Relation `Salle` → `Reservation`
+
+```php
+public function reservations()
+{
+    return $this->hasMany(Reservation::class);
+}
+```
+
+Une salle peut avoir plusieurs réservations.
+
+La relation est donc :
+
+```text
+Salle
+  │
+  ├── Reservation
+  ├── Reservation
+  └── Reservation
+```
+
+Cette relation correspond à la clé étrangère :
+
+```text
+reservations.salle_id
+        ↓
+    salles.id
+```
+
+---
+
+# Modèle `Reservation`
+
+Fichier :
+
+```text
+src/Model/Reservation.php
+```
+
+Le modèle représente la table `reservations`.
+
+```php
+<?php
+
+namespace App\Model;
+
+use Illuminate\Database\Eloquent\Model;
+
+final class Reservation extends Model
+{
+    protected $table = 'reservations';
+
+    protected $fillable = [
+        'salle_id',
+        'responsable',
+        'email',
+        'motif',
+        'date_debut',
+        'date_fin',
+        'statut',
+    ];
+
+    protected $casts = [
+        'date_debut' => 'datetime',
+        'date_fin' => 'datetime',
+    ];
+
+    public function salle()
+    {
+        return $this->belongsTo(Salle::class);
+    }
+}
+```
+
+## Relation `Reservation` → `Salle`
+
+```php
+public function salle()
+{
+    return $this->belongsTo(Salle::class);
+}
+```
+
+Une réservation appartient à une seule salle.
+
+On a donc :
+
+```text
+Salle
+  1
+  │
+  │
+  *
+Reservation
+```
+
+---
+
+# Vérification
+
+Les deux fichiers ont été vérifiés avec PHP :
+
+```bash
+php -l src/Model/Salle.php
+php -l src/Model/Reservation.php
+```
+
+Résultat obtenu :
+
+```text
+No syntax errors detected in src/Model/Salle.php
+No syntax errors detected in src/Model/Reservation.php
+```
+
+L'autoloading Composer a également été vérifié.
+
+Un test Eloquent a permis de vérifier que les deux modèles communiquent correctement avec la base de données :
+
+```text
+=== TEST DES MODELES ELOQUENT ===
+Nombre de salles : 0
+Nombre de réservations : 0
+=== TEST TERMINE ===
+```
+
+Le résultat `0` est normal car les tables existent mais ne contiennent pas encore de données.
+
+Les données initiales seront ajoutées à l'étape 4.
+
+---
+
+# Commit
+
+Les modèles ont été enregistrés avec le commit :
+
+```bash
+git add src/Model/
+git commit -m "feat: ajouter les modèles Eloquent"
+```
+
+Commit :
+
+```text
+1f781cb feat: ajouter les modèles Eloquent
+```
+
+---
+
+# Tag
+
+L'étape 3 est identifiée par le tag :
+
+```text
+v0.3.0
+```
+
+Historique :
+
+```text
+v0.2.0
+   ↓
+feature/03-modeles
+   ↓
+1f781cb
+   ↓
+v0.3.0
+```
+## Réponses aux questions
+
+### 1. Quel type de relation Eloquent avez-vous utilisé ?
+
+Nous avons utilisé une relation **un-à-plusieurs (One-to-Many)**.
+
+Une salle possède plusieurs réservations et une réservation appartient à une seule salle.
+
+Dans le modèle `Salle` :
+
+```php
+public function reservations()
+{
+    return $this->hasMany(Reservation::class);
+}
+```
+
+Dans le modèle `Reservation` :
+
+```php
+public function salle()
+{
+    return $this->belongsTo(Salle::class);
+}
+```
+
+Ces relations permettent d'utiliser :
+
+```php
+$salle->reservations;
+```
+
+pour récupérer les réservations d'une salle, et :
+
+```php
+$reservation->salle;
+```
+
+pour récupérer la salle associée à une réservation.
+
+---
+
+### 2. Pourquoi déclarer `$fillable` ou `$guarded` ?
+
+`$fillable` et `$guarded` permettent de contrôler les attributs qu'Eloquent peut remplir automatiquement.
+
+Dans ce projet, nous utilisons `$fillable` afin de définir explicitement les propriétés pouvant être assignées.
+
+Exemple :
+
+```php
+protected $fillable = [
+    'nom',
+    'batiment',
+    'capacite',
+    'type',
+    'active',
+];
+```
+
+Cela permet notamment de protéger le modèle contre les problèmes liés au **mass assignment**.
+
+`$fillable` fonctionne comme une liste blanche : seuls les champs indiqués sont autorisés.
+
+---
+
+### 3. Pourquoi convertir `active` en booléen ?
+
+Dans MySQL, la colonne `active` est stockée sous la forme `TINYINT(1)`.
+
+Elle représente deux états :
+
+```text
+1 = true
+0 = false
+```
+
+Nous utilisons donc :
+
+```php
+protected $casts = [
+    'active' => 'boolean',
+];
+```
+
+Eloquent convertit automatiquement la valeur en booléen lorsqu'elle est utilisée dans PHP.
+
+Cela permet d'écrire plus naturellement :
+
+```php
+if ($salle->active) {
+    // La salle est active
+}
+```
+
+---
+
+### 4. Pourquoi convertir les dates en objets ?
+
+Les champs `date_debut` et `date_fin` sont convertis en objets de date grâce à :
+
+```php
+protected $casts = [
+    'date_debut' => 'datetime',
+    'date_fin' => 'datetime',
+];
+```
+
+Cela permet de manipuler et de comparer les dates plus facilement dans PHP.
+
+Cette conversion sera particulièrement utile pour les règles métier concernant les réservations, comme la vérification de la durée ou des chevauchements entre réservations.
+
+
+## Étape 4 — Ajouter les données initiales
+
+### Travail demandé
+
+Un seeder a été créé dans :
+
+```text
+database/seed.php
+```
+
+Il permet d'ajouter les cinq salles demandées :
+
+| Salle                | Capacité | Type         |
+| -------------------- | -------: | ------------ |
+| Amphithéâtre A       |      250 | amphitheatre |
+| Salle B12            |       40 | cours        |
+| Laboratoire Chimie   |       24 | laboratoire  |
+| Salle Informatique 1 |       30 | informatique |
+| Salle de réunion     |       12 | reunion      |
+
+Le seeder utilise Eloquent pour insérer les données.
+
+Pour éviter les doublons, la méthode `firstOrCreate()` est utilisée.
+
+### Différence entre migration et seeder
+
+Une **migration** sert à créer ou modifier la structure de la base de données.
+
+Exemple :
+
+```text
+Créer la table salles
+Créer la table reservations
+Ajouter une colonne
+Créer une clé étrangère
+```
+
+Un **seeder** sert à ajouter des données initiales dans les tables.
+
+Exemple :
+
+```text
+Ajouter les salles de l'université
+Ajouter des utilisateurs de test
+Ajouter des données nécessaires au démarrage
+```
+
+Donc :
+
+```text
+Migration → structure de la base de données
+
+Seeder → données de départ
+```
+
+### Pourquoi les données initiales doivent-elles être reproductibles ?
+
+Un seeder doit pouvoir être exécuté plusieurs fois sans créer inutilement les mêmes données.
+
+Par exemple :
+
+```text
+1er lancement → 5 salles
+2e lancement → toujours 5 salles
+3e lancement → toujours 5 salles
+```
+
+Cela permet notamment de recréer facilement les données nécessaires dans un environnement de développement ou de test.
+
+### Comment empêcher les doublons ?
+
+La méthode `firstOrCreate()` permet de rechercher une donnée avant de la créer.
+
+```php
+Salle::firstOrCreate(
+    [
+        'nom' => $salle['nom'],
+        'batiment' => $salle['batiment'],
+    ],
+    $salle
+);
+```
+
+Eloquent recherche d'abord une salle correspondant aux critères.
+
+* Si elle existe → elle n'est pas recréée.
+* Si elle n'existe pas → elle est créée.
+
+### Vérification
+
+Le seeder a été exécuté avec succès.
+
+La vérification dans MySQL a donné :
+
+```text
+COUNT(*) = 5
+```
+
+Les cinq salles sont présentes dans la table `salles`.
+
+Le seeder a ensuite été exécuté une seconde fois.
+
+Le nombre de salles est resté à :
+
+```text
+5
+```
+
+Cela confirme qu'aucun doublon inutile n'a été créé.
+
+### Versionnement
+
+Branche :
+
+```text
+feature/04-donnees-initiales
+```
+
+Tag :
+
+```text
+v0.4.0
+```
