@@ -11,5 +11,8 @@
             "email": "sy6543501@gmail.com"
         }
     ],
-    "require": {}
+    "require": {
+        "illuminate/database": "^12.0",
+        "vlucas/phpdotenv": "^5.7"
+    }
 }

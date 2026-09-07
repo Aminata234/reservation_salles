@@ -520,3 +520,503 @@ Créer le tag :
 ```bash
 git tag v0.1.0
 ```
+
+
+
+
+# Étape 2 — Configurer Eloquent
+
+## Travail demandé
+
+1. Ajouter `.env.example`.
+2. Charger les variables d'environnement.
+3. Configurer `Capsule\Manager`.
+4. Démarrer Eloquent.
+5. Vérifier la connexion.
+6. Créer les tables.
+
+---
+
+## 1. Préparation de la base de données
+
+Pour ce projet, nous avons choisi MySQL comme système de gestion de base de données.
+
+Nous avons créé la base de données :
+
+```text
+reservation_salles
+```
+
+La commande utilisée est :
+
+```sql
+CREATE DATABASE reservation_salles
+DEFAULT CHARACTER SET utf8mb4;
+```
+
+### Pourquoi ?
+
+La base de données est nécessaire pour stocker les informations de l'application, notamment les salles et les réservations.
+
+`utf8mb4` permet à MySQL de gérer correctement les caractères Unicode, notamment les accents et différents caractères spéciaux.
+
+Pour vérifier que la base existe, nous avons utilisé :
+
+```sql
+SHOW DATABASES;
+```
+
+Puis nous avons sélectionné la base avec :
+
+```sql
+USE reservation_salles;
+```
+
+Enfin, nous avons vérifié la base actuellement utilisée avec :
+
+```sql
+SELECT DATABASE();
+```
+
+Le résultat attendu est :
+
+```text
+reservation_salles
+```
+
+---
+
+## 2. Configuration de la connexion MySQL
+
+Pour le développement local, la connexion utilisée est :
+
+```text
+Hôte : 127.0.0.1
+Port : 3306
+Utilisateur : root
+Base de données : reservation_salles
+```
+
+Les informations de connexion sont placées dans un fichier `.env`.
+
+---
+
+## 3. Création de `.env.example`
+
+Nous avons créé le fichier :
+
+```text
+.env.example
+```
+
+avec les variables suivantes :
+
+```env
+APP_ENV=development
+APP_DEBUG=true
+
+DB_DRIVER=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=reservation_salles
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+### Pourquoi utiliser `.env.example` ?
+
+`.env.example` sert de modèle de configuration.
+
+Il permet à une autre personne de savoir quelles variables sont nécessaires pour faire fonctionner le projet sans recevoir notre configuration personnelle.
+
+Le fichier `.env.example` peut être versionné dans Git.
+
+---
+
+## 4. Création du fichier `.env`
+
+Nous avons créé le fichier `.env` à partir du modèle :
+
+```bash
+cp .env.example .env
+```
+
+Le fichier `.env` contient la configuration réellement utilisée sur notre machine.
+
+Il contient actuellement :
+
+```env
+APP_ENV=development
+APP_DEBUG=true
+
+DB_DRIVER=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=reservation_salles
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+### Pourquoi `.env` n'est-il pas versionné ?
+
+Le fichier `.env` contient la configuration réelle de l'environnement.
+
+Dans un projet réel, il peut notamment contenir des mots de passe, des clés ou d'autres informations qui ne doivent pas être envoyées sur Git.
+
+C'est pourquoi `.gitignore` contient :
+
+```text
+.env
+```
+
+---
+
+## 5. Installation de Eloquent
+
+Eloquent est l'ORM utilisé pour communiquer avec la base de données.
+
+Nous avons installé le composant `illuminate/database` avec :
+
+```bash
+composer require illuminate/database
+```
+
+### Pourquoi ?
+
+`illuminate/database` fournit le composant Eloquent sans avoir besoin d'installer tout Laravel.
+
+Il permettra à notre application PHP d'utiliser des modèles et de manipuler les données de la base de données avec PHP.
+
+---
+
+## 6. Installation de phpdotenv
+
+Nous avons installé :
+
+```text
+vlucas/phpdotenv
+```
+
+avec :
+
+```bash
+composer require vlucas/phpdotenv
+```
+
+### Pourquoi ?
+
+Cette bibliothèque permet de charger les variables présentes dans le fichier `.env`.
+
+Elle permettra notamment de récupérer :
+
+```text
+DB_HOST
+DB_PORT
+DB_DATABASE
+DB_USERNAME
+DB_PASSWORD
+```
+
+pour configurer la connexion à MySQL.
+
+---
+
+## 7. Mise à jour de l'autoloading Composer
+
+Après les modifications des dépendances, nous avons utilisé :
+
+```bash
+composer dump-autoload
+```
+
+Cette commande reconstruit les fichiers d'autoloading de Composer.
+
+### Pourquoi ?
+
+Elle permet à Composer de retrouver automatiquement les classes du projet et les classes fournies par les dépendances.
+
+---
+
+## 8. Configuration d'Eloquent avec Capsule
+
+Eloquent peut être utilisé sans Laravel grâce au composant :
+
+```text
+Illuminate\Database\Capsule\Manager
+```
+
+`Capsule\Manager` permet de configurer le gestionnaire de base de données utilisé par Eloquent.
+
+La configuration sera réalisée dans :
+
+```text
+config/database.php
+```
+
+Ce fichier sera responsable de la configuration de la connexion à la base de données.
+
+### Pourquoi mettre cette configuration dans `config/database.php` ?
+
+La connexion à la base de données est une configuration technique.
+
+Elle ne doit pas être répétée dans les différents modèles ou services de l'application.
+
+Nous voulons donc avoir une seule configuration de la connexion.
+
+---
+
+## 9. Chargement de `.env`
+
+La bibliothèque `phpdotenv` sera utilisée pour charger les variables du fichier `.env`.
+
+Le principe est :
+
+```text
+.env
+ ↓
+phpdotenv
+ ↓
+variables de configuration
+ ↓
+Capsule\Manager
+ ↓
+Eloquent
+ ↓
+MySQL
+ ↓
+reservation_salles
+```
+
+Les classes métier ne doivent pas appeler directement `getenv()`.
+
+La configuration doit être centralisée afin que les classes métier restent indépendantes de l'environnement.
+
+---
+
+## 10. Vérification de la connexion
+
+Avant de créer les tables, nous devons vérifier qu'Eloquent arrive à communiquer avec MySQL.
+
+La vérification doit confirmer que :
+
+```text
+PHP
+ ↓
+Eloquent
+ ↓
+MySQL
+ ↓
+reservation_salles
+```
+
+fonctionne correctement.
+
+Les erreurs de connexion doivent être gérées afin que l'application ne produise pas une erreur incompréhensible pour l'utilisateur.
+
+---
+
+# Questions de l'étape 2
+
+## 1. Quel rôle joue `Capsule\Manager` ?
+
+`Capsule\Manager` est une classe fournie par le composant `illuminate/database`.
+
+Elle permet de configurer et de démarrer le gestionnaire de base de données utilisé par Eloquent.
+
+Elle permet notamment de fournir les informations nécessaires à la connexion :
+
+```text
+driver
+host
+port
+database
+username
+password
+```
+
+Elle permet ensuite de démarrer Eloquent.
+
+---
+
+## 2. Pourquoi Eloquent peut-il fonctionner sans Laravel ?
+
+Eloquent fait partie des composants développés par Laravel, mais il peut être installé séparément.
+
+Avec Composer, nous pouvons installer uniquement le composant dont nous avons besoin :
+
+```bash
+composer require illuminate/database
+```
+
+Nous n'avons donc pas besoin d'installer tout le framework Laravel.
+
+Notre projet reste une application PHP sans framework complet.
+
+---
+
+## 3. Où doit se trouver le démarrage de l'ORM ?
+
+Le démarrage de l'ORM doit se trouver dans une partie de configuration ou de démarrage de l'application.
+
+Dans notre projet, la configuration de la base de données se trouve dans :
+
+```text
+config/database.php
+```
+
+L'objectif est que la connexion soit configurée une seule fois.
+
+Les modèles, services et autres classes métier ne doivent pas recréer la connexion à chaque utilisation.
+
+---
+
+## 4. Quelle différence existe entre ORM et SQL écrit à la main ?
+
+Avec SQL écrit à la main, le développeur écrit directement les requêtes SQL.
+
+Par exemple :
+
+```sql
+SELECT * FROM salles;
+```
+
+Avec un ORM comme Eloquent, le développeur peut manipuler les données avec des objets et des modèles PHP.
+
+Par exemple :
+
+```php
+Salle::all();
+```
+
+L'ORM fait ensuite le travail nécessaire pour communiquer avec la base de données.
+
+### Pourquoi utiliser un ORM ?
+
+L'ORM permet notamment :
+
+* de travailler davantage avec les objets PHP ;
+* de réduire la quantité de SQL écrit directement ;
+* de centraliser la logique liée aux modèles ;
+* de faciliter certaines opérations courantes sur les données.
+
+Cependant, connaître SQL reste important, car l'ORM ne remplace pas la compréhension des bases de données.
+
+---
+
+# Commandes utilisées pour l'étape 2
+
+Créer la branche :
+
+```bash
+git switch -c feature/02-eloquent
+```
+
+Créer la base de données :
+
+```sql
+CREATE DATABASE reservation_salles
+DEFAULT CHARACTER SET utf8mb4;
+```
+
+Vérifier les bases :
+
+```sql
+SHOW DATABASES;
+```
+
+Sélectionner la base :
+
+```sql
+USE reservation_salles;
+```
+
+Vérifier la base sélectionnée :
+
+```sql
+SELECT DATABASE();
+```
+
+Installer Eloquent :
+
+```bash
+composer require illuminate/database
+```
+
+Installer phpdotenv :
+
+```bash
+composer require vlucas/phpdotenv
+```
+
+Régénérer l'autoloading :
+
+```bash
+composer dump-autoload
+```
+
+Vérifier l'état Git :
+
+```bash
+git status
+```
+
+Créer un commit :
+
+```bash
+git add .
+git commit -m "chore: configurer Eloquent"
+```
+
+Créer le tag final de l'étape :
+
+```bash
+git tag v0.2.0
+```
+
+---
+
+# Versionnement de l'étape 2
+
+## Branche
+
+```text
+feature/02-eloquent
+```
+
+Cette branche permet de réaliser la configuration de la base de données et d'Eloquent sans modifier directement la branche principale.
+
+## Tag
+
+```text
+v0.2.0
+```
+
+Ce tag représentera la version du projet après la réalisation complète de l'étape 2.
+
+## Commits
+
+Les commits peuvent être organisés ainsi :
+
+```text
+chore: configurer les variables d'environnement
+```
+
+Configuration de `.env.example` et du système de variables d'environnement.
+
+```text
+chore: installer les dépendances Eloquent
+```
+
+Installation de `illuminate/database` et `vlucas/phpdotenv`.
+
+```text
+chore: configurer Eloquent
+```
+
+Configuration de `Capsule\Manager` et démarrage d'Eloquent.
+
+```text
+docs: documenter la configuration Eloquent
+```
+
+Documentation des commandes et des choix réalisés pendant l'étape 2.
