@@ -2628,3 +2628,168 @@ Version :
 ```text
 v0.7.0
 ```
+
+
+## Étape 8 — Implémenter les règles métier
+
+### Objectif
+
+Cette étape consiste à placer les règles métier concernant les réservations dans des services dédiés.
+
+Les services créés sont :
+
+* `CreerReservationService`
+* `AnnulerReservationService`
+
+Les exceptions créées sont :
+
+* `SalleIndisponibleException`
+* `ReservationIntrouvableException`
+
+### `CreerReservationService`
+
+Le service de création d'une réservation effectue les vérifications suivantes :
+
+1. retrouver la salle ;
+2. vérifier que la salle existe ;
+3. vérifier que la salle est active ;
+4. vérifier que la date de début précède la date de fin ;
+5. vérifier que la durée ne dépasse pas quatre heures ;
+6. vérifier que la réservation est prévue dans le futur ;
+7. rechercher un éventuel chevauchement ;
+8. créer la réservation ;
+9. l'enregistrer via le repository ;
+10. retourner la réservation créée.
+
+Le service ne dépend ni de `$_POST`, ni de FastRoute, ni des vues, ni du conteneur DI.
+
+### `AnnulerReservationService`
+
+Le service d'annulation :
+
+1. recherche la réservation par son identifiant ;
+2. lève `ReservationIntrouvableException` si elle n'existe pas ;
+3. demande au repository de l'annuler ;
+4. retourne la réservation modifiée.
+
+### Pourquoi les règles métier ne sont-elles pas dans le contrôleur ?
+
+Le contrôleur est principalement responsable de la communication avec HTTP : récupérer la requête, appeler les composants nécessaires et préparer la réponse.
+
+Les décisions métier doivent être dans le service.
+
+Par exemple :
+
+```text
+Contrôleur
+    ↓
+Service
+    ↓
+Repository
+    ↓
+Base de données
+```
+
+Si la règle « une réservation ne doit pas dépasser quatre heures » était dans le contrôleur, elle serait difficile à réutiliser ailleurs.
+
+En la plaçant dans le service, la même règle peut être utilisée par plusieurs contrôleurs ou interfaces.
+
+### Pourquoi le service dépend-il d'une interface de Repository ?
+
+Le service dépend de :
+
+```php
+SalleRepositoryInterface
+ReservationRepositoryInterface
+```
+
+et non directement de :
+
+```php
+EloquentSalleRepository
+EloquentReservationRepository
+```
+
+Cela permet au service de connaître seulement le contrat dont il a besoin.
+
+Cela facilite également les tests, car on peut injecter un faux repository sans utiliser MySQL.
+
+### Quelle exception doit être levée en cas de conflit ?
+
+Lorsqu'une réservation existe déjà sur la période demandée, le service lève :
+
+```php
+SalleIndisponibleException
+```
+
+Le repository recherche le conflit, mais c'est le service qui prend la décision métier de refuser la nouvelle réservation.
+
+### Comment tester le service sans MySQL ?
+
+On peut créer des faux repositories qui implémentent les mêmes interfaces que les vrais repositories.
+
+Par exemple :
+
+```text
+CreerReservationService
+        ↓
+ReservationRepositoryInterface
+        ↑
+FakeReservationRepository
+```
+
+Le service ne sait pas qu'il utilise un faux repository.
+
+Cela permet de tester :
+
+* la création d'une réservation ;
+* une salle inactive ;
+* une durée supérieure à quatre heures ;
+* une date dans le passé ;
+* un conflit de réservation ;
+
+sans avoir besoin de se connecter à MySQL.
+
+### Résultat
+
+Les tests manuels réalisés ont permis de vérifier les principaux comportements du service :
+
+* réservation correcte acceptée ;
+* salle inactive refusée ;
+* durée supérieure à quatre heures refusée ;
+* date passée refusée ;
+* réservation en conflit refusée.
+
+### Architecture obtenue
+
+```text
+HTTP
+ ↓
+Controller
+ ↓
+Service
+ ↓
+RepositoryInterface
+ ↓
+EloquentRepository
+ ↓
+Eloquent Model
+ ↓
+MySQL
+```
+
+Le service contient les règles métier et le repository contient l'accès aux données.
+
+### Branche et version
+
+Branche :
+
+```text
+feature/08-services
+```
+
+Version :
+
+```text
+v0.8.0
+```
