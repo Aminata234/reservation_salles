@@ -2054,3 +2054,356 @@ Tag :
 ```text
 v0.5.0
 ```
+
+
+## Étape 6 — Créer les DTO
+
+### Objectif
+
+Cette étape consiste à créer des objets permettant de transporter les données entre les différentes couches de l'application.
+
+Les DTO créés sont :
+
+```text
+src/
+└── DTO/
+    ├── CreerSalleDTO.php
+    └── CreerReservationDTO.php
+```
+
+### `CreerSalleDTO`
+
+`CreerSalleDTO` contient les données nécessaires à la création d'une salle :
+
+* `nom` : nom de la salle ;
+* `batiment` : bâtiment de la salle ;
+* `capacite` : capacité de la salle ;
+* `type` : type de salle ;
+* `active` : indique si la salle est active.
+
+Les propriétés sont typées et en lecture seule avec `readonly`.
+
+### `CreerReservationDTO`
+
+`CreerReservationDTO` contient les données nécessaires à la création d'une réservation :
+
+* `salleId` : identifiant de la salle ;
+* `responsable` : responsable de la réservation ;
+* `email` : adresse e-mail du responsable ;
+* `motif` : motif de la réservation ;
+* `dateDebut` : date et heure de début ;
+* `dateFin` : date et heure de fin.
+
+Les dates sont représentées avec `DateTimeImmutable`.
+
+---
+
+### Rôle du DTO
+
+DTO signifie **Data Transfer Object**.
+
+Son rôle est de transporter des données structurées entre les différentes couches de l'application.
+
+Le flux prévu est :
+
+```text
+Formulaire HTTP
+       ↓
+     $_POST
+       ↓
+   Validation
+       ↓
+ Transformation des types
+       ↓
+      DTO
+       ↓
+    Service
+       ↓
+  Repository
+       ↓
+ Modèle Eloquent
+       ↓
+ Base de données
+```
+
+Le Service ne reçoit donc pas directement `$_POST`.
+
+Il reçoit un objet comme `CreerSalleDTO` ou `CreerReservationDTO`.
+
+---
+
+## Questions
+
+### 1. Quelle différence existe entre DTO et modèle Eloquent ?
+
+Le **DTO** sert à transporter des données entre les différentes couches de l'application.
+
+Il ne représente pas une table de la base de données et ne contient pas de logique d'accès à la base.
+
+Le **modèle Eloquent**, lui, représente une entité associée à une table de la base de données et permet de travailler avec cette base grâce à Eloquent.
+
+Dans notre projet :
+
+```text
+CreerSalleDTO
+    ↓
+transporte les données
+```
+
+alors que :
+
+```text
+Salle
+    ↓
+représente la table "salles"
+    ↓
+travaille avec Eloquent
+```
+
+On peut donc retenir :
+
+```text
+DTO             → transporter les données
+Modèle Eloquent → représenter les données persistées
+```
+
+---
+
+### 2. Pourquoi le DTO ne doit-il pas appeler `save()` ?
+
+Le DTO ne doit pas appeler `save()` car `save()` appartient au fonctionnement d'**Eloquent**.
+
+Le DTO ne doit connaître ni la base de données ni Eloquent.
+
+Son rôle est uniquement de transporter les données.
+
+Il serait donc incorrect de faire :
+
+```php
+$dto->save();
+```
+
+La sauvegarde est réalisée par les couches responsables de la persistance :
+
+```text
+DTO
+ ↓
+Service
+ ↓
+Repository
+ ↓
+Modèle Eloquent
+ ↓
+Base de données
+```
+
+Cette séparation permet de respecter le principe de responsabilité unique.
+
+---
+
+### 3. À quel moment transforme-t-on les chaînes en dates ?
+
+Les données provenant d'un formulaire HTTP arrivent généralement sous forme de chaînes de caractères.
+
+Par exemple :
+
+```text
+"2026-09-10 10:00:00"
+```
+
+Après avoir reçu et validé les données, la chaîne est transformée en objet `DateTimeImmutable` avant de construire le DTO.
+
+Exemple :
+
+```php
+$dateDebut = new DateTimeImmutable($data['date_debut']);
+$dateFin = new DateTimeImmutable($data['date_fin']);
+```
+
+Puis ces objets sont transmis au DTO :
+
+```php
+$dto = new CreerReservationDTO(
+    $salleId,
+    $responsable,
+    $email,
+    $motif,
+    $dateDebut,
+    $dateFin
+);
+```
+
+Le DTO reçoit donc des données correctement typées.
+
+La transformation des données HTTP vers les types attendus par le DTO fait partie de la préparation des données avant leur transmission au Service.
+
+---
+
+### 4. Le DTO doit-il contenir la règle de chevauchement ?
+
+**Non.**
+
+Le DTO doit uniquement transporter les données nécessaires à la réservation.
+
+Il contient par exemple :
+
+```text
+dateDebut
+dateFin
+```
+
+mais il ne doit pas décider si la réservation chevauche une autre réservation.
+
+La règle :
+
+> Une salle ne peut pas avoir deux réservations qui se chevauchent.
+
+est une **règle métier**.
+
+Elle doit donc être placée dans la couche Service.
+
+```text
+CreerReservationDTO
+        ↓
+contient les dates
+        ↓
+ReservationService
+        ↓
+vérifie le chevauchement
+```
+
+Le DTO ne doit donc contenir ni requête SQL, ni appel à `save()`, ni règle de chevauchement.
+
+---
+
+## Différence entre validation, DTO, Service et Repository
+
+Chaque couche possède une responsabilité différente :
+
+```text
+Validator
+→ vérifie que les données reçues sont valides
+
+DTO
+→ transporte les données correctement structurées et typées
+
+Service
+→ applique les règles métier
+
+Repository
+→ gère l'accès aux données
+
+Model Eloquent
+→ représente une entité et fournit le comportement Eloquent
+```
+
+### Exemple
+
+Pour une réservation :
+
+```text
+"2026-09-10 10:00:00"
+        ↓
+Validation
+        ↓
+chaîne valide
+        ↓
+DateTimeImmutable
+        ↓
+CreerReservationDTO
+        ↓
+ReservationService
+        ↓
+vérification du chevauchement
+        ↓
+Repository
+        ↓
+Reservation (Eloquent)
+        ↓
+Base de données
+```
+
+---
+
+## Pourquoi ne pas transmettre directement `$_POST` au Service ?
+
+`$_POST` appartient à la couche HTTP.
+
+Le Service ne doit pas dépendre directement du formulaire.
+
+Transmettre directement `$_POST` au Service créerait un couplage entre la couche HTTP et la couche métier.
+
+Avec un DTO :
+
+```text
+Controller → DTO → Service
+```
+
+le Service reste indépendant de la manière dont les données ont été reçues.
+
+Les données pourraient venir plus tard d'un formulaire HTML, d'une API ou d'une autre source sans modifier le fonctionnement du Service.
+
+---
+
+## Pourquoi utiliser `readonly` ?
+
+Les propriétés `readonly` ne peuvent pas être modifiées après la création du DTO.
+
+Cela permet de conserver les données telles qu'elles ont été préparées lors de la création de l'objet.
+
+Exemple :
+
+```php
+public readonly string $nom
+```
+
+Une fois le DTO créé, la propriété `nom` ne peut plus être remplacée.
+
+---
+
+## Tests réalisés
+
+Les deux DTO ont été vérifiés avec :
+
+```bash
+php -l src/DTO/CreerSalleDTO.php
+php -l src/DTO/CreerReservationDTO.php
+```
+
+Résultat :
+
+```text
+No syntax errors detected in src/DTO/CreerSalleDTO.php
+No syntax errors detected in src/DTO/CreerReservationDTO.php
+```
+
+Un test de création de `CreerSalleDTO` et `CreerReservationDTO` a également été réalisé avec des données de test.
+
+Les objets ont été correctement créés avec leurs types attendus.
+
+---
+
+## Principe d'architecture respecté
+
+Les DTO :
+
+* ne contiennent aucune requête SQL ;
+* ne communiquent pas avec la base de données ;
+* ne lisent pas directement `$_POST` ;
+* ne contiennent pas de règles métier ;
+* transportent des données structurées et typées ;
+* utilisent `readonly` afin d'éviter les modifications après leur création.
+
+### Versionnement
+
+Branche :
+
+```text
+feature/06-dto
+```
+
+Version :
+
+```text
+v0.6.0
+```
