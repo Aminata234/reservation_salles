@@ -1,0 +1,8 @@
+.git
+.gitignore
+.env
+vendor/
+tests/
+CHANGELOG.md
+README.md
+
