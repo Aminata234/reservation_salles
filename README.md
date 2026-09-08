@@ -2407,3 +2407,224 @@ Version :
 ```text
 v0.6.0
 ```
+
+
+## Étape 7 — Créer l'accès aux données
+
+### Objectif
+
+Cette étape consiste à isoler l'accès aux données derrière des contrats et des implémentations de Repository.
+
+Les fichiers créés sont :
+
+```text
+src/
+└── Repository/
+    ├── SalleRepositoryInterface.php
+    ├── ReservationRepositoryInterface.php
+    ├── EloquentSalleRepository.php
+    └── EloquentReservationRepository.php
+```
+
+### SalleRepositoryInterface
+
+Le contrat `SalleRepositoryInterface` définit les opérations nécessaires pour les salles :
+
+* lister les salles ;
+* retrouver une salle ;
+* enregistrer une salle.
+
+### ReservationRepositoryInterface
+
+Le contrat `ReservationRepositoryInterface` définit les opérations nécessaires pour les réservations :
+
+* lister les réservations ;
+* retrouver une réservation ;
+* rechercher un conflit ;
+* enregistrer une réservation ;
+* annuler une réservation.
+
+### Implémentations Eloquent
+
+Les interfaces sont implémentées par :
+
+* `EloquentSalleRepository` ;
+* `EloquentReservationRepository`.
+
+Ces classes utilisent Eloquent pour communiquer avec la base de données.
+
+Les appels comme :
+
+```php
+Salle::query()
+Reservation::query()
+$model->save()
+```
+
+sont donc isolés dans les Repositories.
+
+Les contrôleurs ne doivent pas effectuer directement ces opérations.
+
+### Architecture
+
+Le chemin d'accès aux données est :
+
+```text
+Controller
+    ↓
+Service
+    ↓
+Repository
+    ↓
+Model Eloquent
+    ↓
+MySQL
+```
+
+Le Repository sert donc d'intermédiaire entre la logique métier et l'accès aux données.
+
+---
+
+## Questions
+
+### 1. Eloquent constitue-t-il déjà un accès aux données ?
+
+Oui.
+
+Eloquent constitue déjà une solution d'accès aux données. Il permet d'interroger et de modifier la base de données à travers les modèles.
+
+Par exemple :
+
+```php
+Salle::query()->get();
+Salle::query()->find($id);
+$salle->save();
+```
+
+Eloquent fournit donc déjà les fonctionnalités nécessaires pour communiquer avec la base de données.
+
+---
+
+### 2. Pourquoi ajouter un Repository au-dessus d'Eloquent ?
+
+Même si Eloquent fournit déjà un accès aux données, le Repository permet d'isoler cet accès dans une couche spécifique.
+
+Sans Repository, un contrôleur pourrait contenir directement :
+
+```php
+Salle::query()->get();
+```
+
+Avec le Repository, le contrôleur demande simplement :
+
+```php
+$salleRepository->lister();
+```
+
+Le contrôleur ne connaît donc pas la manière utilisée pour récupérer les données.
+
+Cela permet de mieux séparer les responsabilités :
+
+```text
+Controller
+→ gérer la requête HTTP
+
+Service
+→ appliquer les règles métier
+
+Repository
+→ accéder aux données
+
+Eloquent
+→ communiquer avec la base
+```
+
+---
+
+### 3. Cette abstraction est-elle toujours nécessaire ?
+
+Non.
+
+Pour une petite application simple, utiliser directement Eloquent peut être suffisant.
+
+Cependant, dans ce projet, le Repository est utilisé volontairement afin de respecter une architecture séparant les responsabilités.
+
+Il permet également de rendre le code moins dépendant directement d'Eloquent.
+
+---
+
+### 4. Quel avantage apporte-t-elle ?
+
+Le Repository apporte plusieurs avantages :
+
+* séparation des responsabilités ;
+* contrôleurs plus simples ;
+* services moins dépendants d'Eloquent ;
+* code plus facile à tester ;
+* accès aux données centralisé ;
+* possibilité de modifier l'implémentation plus facilement.
+
+Par exemple, si l'accès aux données devait changer à l'avenir, l'implémentation du Repository pourrait être modifiée sans devoir modifier tous les contrôleurs.
+
+---
+
+## Recherche de conflit
+
+La méthode :
+
+```php
+rechercherConflit()
+```
+
+permet de rechercher dans la base une réservation existante qui chevauche une période donnée.
+
+Le Repository est responsable de la **recherche dans les données**.
+
+La décision métier reste du côté du Service.
+
+```text
+Repository
+→ recherche un conflit
+
+Service
+→ décide de refuser ou d'accepter la réservation
+```
+
+---
+
+## Contraintes respectées
+
+Les contrôleurs ne doivent jamais contenir directement :
+
+```php
+Salle::query();
+Reservation::where(...);
+$model->save();
+```
+
+Ces opérations sont isolées dans les Repositories Eloquent.
+
+### Tests réalisés
+
+Les quatre fichiers ont été vérifiés avec `php -l`.
+
+Les tests ont également confirmé que :
+
+* les 5 salles existantes peuvent être récupérées ;
+* une salle peut être retrouvée par son identifiant ;
+* les réservations peuvent être listées ;
+* les Repositories communiquent correctement avec Eloquent et la base de données.
+
+### Versionnement
+
+Branche :
+
+```text
+feature/07-repositories
+```
+
+Version :
+
+```text
+v0.7.0
+```
