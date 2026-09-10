@@ -1,14 +1,28 @@
 <?php
 
-require_once __DIR__ . '/../vendor/autoload.php';
+declare(strict_types=1);
 
-$routes = require __DIR__ . '/../routes/web.php';
+use App\Application;
+use DI\ContainerBuilder;
+use FastRoute\Dispatcher;
+use Illuminate\Database\Capsule\Manager;
 
-$dispatcher = FastRoute\simpleDispatcher(
-    function (FastRoute\RouteCollector $router) use ($routes): void {
-        $routes($router);
-    }
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+$builder = new ContainerBuilder();
+
+$builder->addDefinitions(
+    dirname(__DIR__) . '/config/container.php'
 );
+
+$container = $builder->build();
+
+/*
+ * Initialise Eloquent et sa connexion à la base de données.
+ */
+$container->get(Manager::class);
+
+$dispatcher = $container->get(Dispatcher::class);
 
 $httpMethod = $_SERVER['REQUEST_METHOD'];
 
@@ -24,29 +38,37 @@ $routeInfo = $dispatcher->dispatch(
 
 switch ($routeInfo[0]) {
 
-    case FastRoute\Dispatcher::NOT_FOUND:
+    case Dispatcher::NOT_FOUND:
         http_response_code(404);
 
-        require __DIR__ . '/../templates/error/404.php';
+        require dirname(__DIR__) . '/templates/error/404.php';
 
         break;
 
-    case FastRoute\Dispatcher::METHOD_NOT_ALLOWED:
+    case Dispatcher::METHOD_NOT_ALLOWED:
         http_response_code(405);
 
         header(
             'Allow: ' . implode(', ', $routeInfo[1])
         );
 
-        require __DIR__ . '/../templates/error/405.php';
+        require dirname(__DIR__) . '/templates/error/405.php';
 
         break;
 
-    case FastRoute\Dispatcher::FOUND:
+    case Dispatcher::FOUND:
 
         $handler = $routeInfo[1];
 
         $vars = $routeInfo[2];
+
+        $controllerClass = $handler[0];
+
+        $method = $handler[1];
+
+        $controller = $container->get($controllerClass);
+
+        $controller->$method(...array_values($vars));
 
         break;
 }
