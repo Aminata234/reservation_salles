@@ -4681,3 +4681,318 @@ Controller
      ↓
 Action
 ```
+
+
+
+## Étape 11 — Configurer PHP-DI
+
+### Objectif
+
+Cette étape consiste à intégrer **PHP-DI** dans l'application afin de centraliser la création des objets et leurs dépendances.
+
+Le conteneur permet notamment de créer automatiquement les contrôleurs, services, validateurs et repositories nécessaires au fonctionnement de l'application.
+
+### Configuration du conteneur
+
+Le fichier :
+
+```text
+config/container.php
+```
+
+contient les définitions du conteneur PHP-DI.
+
+Les classes concrètes simples utilisent l'autowiring :
+
+```php
+SalleController::class => autowire(),
+ReservationController::class => autowire(),
+CreerReservationService::class => autowire(),
+```
+
+Les interfaces doivent avoir une définition explicite :
+
+```php
+SalleRepositoryInterface::class =>
+    autowire(EloquentSalleRepository::class),
+
+ReservationRepositoryInterface::class =>
+    autowire(EloquentReservationRepository::class),
+```
+
+Cela permet à PHP-DI de savoir quelle classe concrète utiliser lorsqu'une classe demande une interface.
+
+### Injection de dépendances
+
+Une injection de dépendance consiste à fournir à une classe les objets dont elle a besoin.
+
+Par exemple :
+
+```php
+public function __construct(
+    private SalleRepositoryInterface $salleRepository
+) {
+}
+```
+
+Le contrôleur indique qu'il a besoin d'un `SalleRepositoryInterface`.
+
+Il ne crée pas lui-même le repository.
+
+Le conteneur PHP-DI se charge de fournir l'implémentation correspondante.
+
+### Différence entre injection et conteneur
+
+**Injection de dépendance :**
+
+C'est le fait de donner à une classe ce dont elle a besoin.
+
+**Conteneur :**
+
+C'est l'outil qui connaît les dépendances et qui peut construire les objets nécessaires.
+
+On peut résumer ainsi :
+
+```text
+Injection
+= donner une dépendance à une classe
+
+Conteneur
+= gérer et construire les dépendances
+```
+
+### Autowiring
+
+L'autowiring permet à PHP-DI de construire automatiquement une classe concrète en analysant son constructeur.
+
+Par exemple :
+
+```php
+CreerSalleService::class => autowire(),
+```
+
+Si le service possède :
+
+```php
+public function __construct(
+    SalleRepositoryInterface $salleRepository
+) {
+}
+```
+
+PHP-DI cherche la définition de `SalleRepositoryInterface` et trouve :
+
+```php
+SalleRepositoryInterface::class =>
+    autowire(EloquentSalleRepository::class),
+```
+
+Il peut alors construire automatiquement le service avec le bon repository.
+
+### Pourquoi les interfaces ont besoin d'une définition ?
+
+Une interface ne peut pas être instanciée directement.
+
+PHP-DI ne peut donc pas faire :
+
+```php
+new SalleRepositoryInterface();
+```
+
+Il faut lui indiquer quelle classe utiliser :
+
+```php
+SalleRepositoryInterface::class =>
+    autowire(EloquentSalleRepository::class),
+```
+
+On obtient donc :
+
+```text
+SalleRepositoryInterface
+        ↓
+EloquentSalleRepository
+```
+
+Le code dépend de l'interface et non directement de l'implémentation.
+
+### Factory pour les objets configurés
+
+Certains objets ont besoin d'une configuration particulière.
+
+Pour `Illuminate\Database\Capsule\Manager`, une factory est utilisée :
+
+```php
+Manager::class => factory(function (): Manager {
+    // configuration de la connexion MySQL
+
+    return $capsule;
+}),
+```
+
+Cette factory permet de créer et configurer correctement Eloquent avant son utilisation.
+
+FastRoute utilise également une factory pour construire le dispatcher à partir des routes définies dans :
+
+```text
+routes/web.php
+```
+
+### Rôle de `public/index.php`
+
+`public/index.php` est le point d'entrée de l'application.
+
+Il crée le conteneur :
+
+```php
+$builder = new ContainerBuilder();
+
+$builder->addDefinitions(
+    dirname(__DIR__) . '/config/container.php'
+);
+
+$container = $builder->build();
+```
+
+Puis il récupère les objets nécessaires :
+
+```php
+$container->get(Manager::class);
+
+$dispatcher = $container->get(Dispatcher::class);
+```
+
+Lorsqu'une route est trouvée, le conteneur récupère le contrôleur :
+
+```php
+$controller = $container->get($controllerClass);
+```
+
+Le contrôleur est donc construit avec toutes ses dépendances.
+
+### Pourquoi limiter `container->get()` au point d'entrée ?
+
+Le conteneur doit principalement être utilisé au niveau du point d'entrée de l'application.
+
+Les classes métier ne doivent pas recevoir le conteneur uniquement pour rechercher leurs dépendances.
+
+Mauvaise pratique :
+
+```php
+final class CreerReservationService
+{
+    public function __construct(
+        private ContainerInterface $container
+    ) {
+    }
+}
+```
+
+Bonne pratique :
+
+```php
+final class CreerReservationService
+{
+    public function __construct(
+        private SalleRepositoryInterface $salles,
+        private ReservationRepositoryInterface $reservations
+    ) {
+    }
+}
+```
+
+La classe connaît directement ce dont elle a besoin.
+
+### Anti-pattern : Service Locator
+
+Si toutes les classes utilisent le conteneur pour rechercher elles-mêmes leurs dépendances, on tombe dans un anti-pattern appelé **Service Locator**.
+
+Exemple :
+
+```text
+Classe
+  ↓
+Conteneur
+  ↓
+Recherche d'une dépendance
+```
+
+Cela rend les dépendances moins visibles et rend le code plus difficile à tester et à maintenir.
+
+Avec l'injection de dépendances :
+
+```text
+Conteneur
+  ↓
+Construit la dépendance
+  ↓
+La donne à la classe
+```
+
+### Architecture après PHP-DI
+
+Le fonctionnement de l'application peut être résumé ainsi :
+
+```text
+Navigateur
+    ↓
+public/index.php
+    ↓
+Conteneur PHP-DI
+    ↓
+FastRoute
+    ↓
+Contrôleur
+    ↓
+Service
+    ↓
+Repository
+    ↓
+Eloquent
+    ↓
+MySQL
+```
+
+PHP-DI permet donc de gérer automatiquement la construction des objets et leur injection, sans que les classes aient besoin de connaître le conteneur.
+
+### Questions de l'étape 11
+
+**1. Quelle différence existe entre injection et conteneur ?**
+
+L'injection consiste à fournir une dépendance à une classe. Le conteneur est l'outil qui construit et fournit ces dépendances.
+
+**2. Qu'est-ce que l'autowiring ?**
+
+L'autowiring permet au conteneur de construire automatiquement les classes concrètes en analysant leurs dépendances dans le constructeur.
+
+**3. Pourquoi les interfaces nécessitent-elles une définition ?**
+
+Parce qu'une interface ne peut pas être instanciée. Le conteneur doit connaître l'implémentation à utiliser.
+
+**4. Pourquoi limiter `container->get()` au point d'entrée ?**
+
+Pour éviter que les classes dépendent directement du conteneur et pour conserver une injection de dépendances claire.
+
+**5. Quel anti-pattern apparaît si toutes les classes interrogent le conteneur ?**
+
+Le **Service Locator**.
+
+### Versionnement
+
+Branche :
+
+```text
+feature/11-container
+```
+
+Version :
+
+```text
+v0.11.0
+```
+
+Commit principal :
+
+```text
+feat: configurer le conteneur PHP-DI
+```
