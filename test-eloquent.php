@@ -15,3 +15,12 @@ try {
 }
 
 
+// APP_ENV=development
+// APP_DEBUG=true
+
+// DB_DRIVER=mysql
+// DB_HOST=127.0.0.1 
+// DB_PORT=3306
+// DB_DATABASE=reservation_salles
+// DB_USERNAME=root
+// DB_PASSWORD=
