@@ -2793,3 +2793,434 @@ Version :
 ```text
 v0.8.0
 ```
+
+
+# Étape 9 — Créer les contrôleurs et les vues
+
+## Objectif
+
+Cette étape consiste à relier les données reçues par HTTP avec les validateurs, les DTO, les services métier et les vues.
+
+L'objectif est de respecter les responsabilités de chaque couche :
+
+```text
+Requête HTTP
+     ↓
+Controller
+     ↓
+Validator
+     ↓
+DTO
+     ↓
+Service
+     ↓
+Repository
+     ↓
+Eloquent / MySQL
+```
+
+Après une opération réussie avec `POST`, l'application effectue une redirection afin d'éviter une nouvelle soumission du formulaire.
+
+---
+
+## Contrôleurs créés
+
+Les contrôleurs suivants ont été créés :
+
+```text
+src/Controller/
+├── SalleController.php
+└── ReservationController.php
+```
+
+### SalleController
+
+Actions prévues :
+
+```text
+index()
+show()
+create()
+store()
+edit()
+update()
+```
+
+Responsabilités :
+
+* afficher la liste des salles ;
+* afficher le détail d'une salle ;
+* afficher le formulaire de création ;
+* recevoir les données du formulaire ;
+* appeler `SalleValidator` ;
+* construire le DTO ;
+* appeler le service concerné ;
+* rediriger après une opération réussie ;
+* afficher les erreurs dans le formulaire en cas d'échec.
+
+### ReservationController
+
+Actions prévues :
+
+```text
+index()
+show()
+create()
+store()
+cancel()
+```
+
+Responsabilités :
+
+* afficher les réservations ;
+* afficher le détail d'une réservation ;
+* afficher le formulaire de réservation ;
+* recevoir les données HTTP ;
+* appeler `ReservationValidator` ;
+* construire `CreerReservationDTO` ;
+* appeler `CreerReservationService` ;
+* gérer les erreurs métier ;
+* annuler une réservation ;
+* rediriger après succès.
+
+---
+
+## Vues créées
+
+Les vues sont organisées ainsi :
+
+```text
+templates/
+├── layout/
+│   └── base.php
+│
+├── salle/
+│   ├── index.php
+│   ├── show.php
+│   └── form.php
+│
+├── reservation/
+│   ├── index.php
+│   ├── show.php
+│   └── form.php
+│
+└── error/
+    ├── 404.php
+    └── 405.php
+```
+
+### Layout
+
+`templates/layout/base.php` contient la structure commune des pages.
+
+Les différentes pages peuvent réutiliser cette structure afin d'éviter de répéter le même HTML.
+
+### Pages des salles
+
+* `salle/index.php` : liste des salles ;
+* `salle/show.php` : détail d'une salle ;
+* `salle/form.php` : formulaire de création ou de modification.
+
+### Pages des réservations
+
+* `reservation/index.php` : liste des réservations ;
+* `reservation/show.php` : détail d'une réservation ;
+* `reservation/form.php` : formulaire de création d'une réservation.
+
+### Pages d'erreur
+
+* `error/404.php` : page introuvable ;
+* `error/405.php` : méthode HTTP non autorisée.
+
+---
+
+## Responsabilité de `store()`
+
+Les méthodes `store()` suivent le principe suivant :
+
+```text
+1. Lire les données HTTP
+        ↓
+2. Valider les données
+        ↓
+3. Afficher le formulaire avec les erreurs
+   si les données sont invalides
+        ↓
+4. Construire le DTO
+        ↓
+5. Appeler le service métier
+        ↓
+6. Rediriger après succès
+```
+
+Le tableau `$_POST` n'est donc pas transmis directement au service.
+
+Exemple de flux :
+
+```text
+$_POST
+  ↓
+Validator
+  ↓
+ValidationResult
+  ↓
+CreerReservationDTO
+  ↓
+CreerReservationService
+  ↓
+ReservationRepository
+```
+
+---
+
+# Contraintes respectées
+
+### Les contrôleurs ne contiennent pas de requêtes ORM
+
+Le contrôleur n'utilise pas directement :
+
+```php
+Salle::query();
+Reservation::where(...);
+$model->save();
+```
+
+L'accès aux données est réalisé par les repositories.
+
+### Les données HTTP sont validées
+
+Les données reçues depuis les formulaires passent par :
+
+```text
+SalleValidator
+ReservationValidator
+```
+
+avant d'être utilisées par les couches suivantes.
+
+### Les DTO sont utilisés
+
+Les services ne reçoivent pas directement `$_POST`.
+
+Les données validées sont transformées en objets :
+
+```text
+CreerSalleDTO
+CreerReservationDTO
+```
+
+### Les vues ne contiennent pas de logique métier
+
+Les vues servent principalement à afficher les données et les erreurs.
+
+Elles n'effectuent pas :
+
+```php
+Salle::query()
+Reservation::where(...)
+```
+
+et ne décident pas si une réservation est autorisée.
+
+### Les sorties dynamiques sont échappées
+
+Les données affichées dans le HTML doivent être échappées avec :
+
+```php
+htmlspecialchars($value, ENT_QUOTES, 'UTF-8')
+```
+
+afin d'éviter l'injection de contenu HTML ou JavaScript.
+
+### Redirection après POST
+
+Après une création, une modification ou une annulation réussie, l'application effectue une redirection.
+
+Cela suit le principe :
+
+```text
+POST
+ ↓
+Traitement
+ ↓
+Redirect
+ ↓
+GET
+```
+
+---
+
+# Questions de l'étape 9
+
+## 1. Pourquoi les contrôleurs ne doivent-ils pas contenir la logique métier ?
+
+Le contrôleur est chargé de gérer la requête HTTP.
+
+Il doit recevoir les données, appeler les composants nécessaires et préparer la réponse.
+
+Les règles métier doivent rester dans les services.
+
+Par exemple, le contrôleur ne doit pas décider lui-même :
+
+```text
+la durée est-elle supérieure à 4 heures ?
+la salle est-elle active ?
+y a-t-il un chevauchement ?
+```
+
+Ces règles appartiennent à `CreerReservationService`.
+
+### Avantage
+
+Cette séparation rend le code plus facile à comprendre, à tester et à maintenir.
+
+---
+
+## 2. Pourquoi utiliser un DTO entre le contrôleur et le service ?
+
+Le DTO permet de transporter des données déjà préparées et correctement typées.
+
+Par exemple :
+
+```text
+salleId     → int
+responsable → string
+email       → string
+motif       → string
+dateDebut   → DateTimeImmutable
+dateFin     → DateTimeImmutable
+```
+
+Le service ne reçoit donc pas directement un tableau `$_POST`.
+
+### Avantage
+
+Le service travaille avec une structure claire et prévisible.
+
+Le DTO sépare également les données HTTP de la logique métier.
+
+---
+
+## 3. Pourquoi effectuer une redirection après un POST réussi ?
+
+Après un `POST`, l'application redirige vers une page `GET`.
+
+Exemple :
+
+```text
+POST /reservations
+       ↓
+création réussie
+       ↓
+redirect
+       ↓
+GET /reservations
+```
+
+Cela évite qu'un actualisation du navigateur renvoie encore le formulaire en `POST`.
+
+Cette technique suit le principe **Post/Redirect/Get (PRG)**.
+
+---
+
+## 4. Pourquoi les vues ne doivent-elles pas contenir les règles métier ?
+
+Une vue a pour rôle d'afficher les informations.
+
+Elle ne doit pas décider :
+
+* si une salle peut être réservée ;
+* si une réservation est en conflit ;
+* si la durée dépasse quatre heures ;
+* si une réservation doit être acceptée.
+
+Ces décisions sont prises dans les services métier.
+
+Cette séparation permet d'avoir :
+
+```text
+Controller → gestion HTTP
+Service    → règles métier
+Repository → accès aux données
+View       → affichage
+```
+
+Chaque couche a donc une responsabilité claire.
+
+---
+
+# Résumé de l'architecture
+
+L'étape 9 a permis de relier les couches précédentes avec l'interface web :
+
+```text
+Navigateur
+    ↓
+Controller
+    ↓
+Validator
+    ↓
+DTO
+    ↓
+Service
+    ↓
+Repository
+    ↓
+Eloquent
+    ↓
+MySQL
+```
+
+Puis le résultat remonte vers :
+
+```text
+MySQL
+   ↓
+Repository
+   ↓
+Service
+   ↓
+Controller
+   ↓
+View
+   ↓
+Navigateur
+```
+
+---
+
+# Versionnement
+
+Branche :
+
+```text
+feature/09-interface-web
+```
+
+Commit :
+
+```text
+feat: créer les contrôleurs et les vues
+```
+
+Tag :
+
+```text
+v0.9.0
+```
+
+Le tag `v0.9.0` correspond à la fin de l'étape Interface Web.
+
+La configuration Docker est conservée séparément dans :
+
+```text
+feature/09-docker
+```
+
+avec le commit :
+
+```text
+feat: conteneuriser l'application avec Docker
+```
+
+Ainsi, le travail fonctionnel de l'étape 9 et le travail Docker restent séparés dans l'historique Git.
