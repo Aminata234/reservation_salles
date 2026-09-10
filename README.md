@@ -3224,3 +3224,1460 @@ feat: conteneuriser l'application avec Docker
 ```
 
 Ainsi, le travail fonctionnel de l'étape 9 et le travail Docker restent séparés dans l'historique Git.
+
+
+
+# Étape 10 — Configurer FastRoute
+
+## 1. Objectif de l'étape
+
+Cette étape consiste à mettre en place le routage de l'application avec **FastRoute**.
+
+Le routeur permet de faire le lien entre :
+
+* la requête HTTP du navigateur ;
+* l'URL demandée ;
+* la méthode HTTP utilisée ;
+* le contrôleur ;
+* l'action du contrôleur ;
+* les paramètres présents dans l'URL.
+
+L'objectif est également de séparer les responsabilités.
+
+Le fichier `routes/web.php` déclare les routes, tandis que `public/index.php` exécute le routage.
+
+---
+
+# 2. Qu'est-ce qu'une route ?
+
+Une route est une règle qui indique à l'application :
+
+> Pour telle méthode HTTP et telle URL, quelle action doit être exécutée ?
+
+Par exemple :
+
+```php
+$router->addRoute('GET', '/salles', [
+    SalleController::class,
+    'index'
+]);
+```
+
+Cette route signifie :
+
+```text
+Méthode HTTP : GET
+URL          : /salles
+Action       : SalleController::index()
+```
+
+Donc lorsque l'utilisateur visite :
+
+```text
+GET /salles
+```
+
+FastRoute doit trouver cette route.
+
+---
+
+# 3. Qu'est-ce que FastRoute ?
+
+**FastRoute** est une bibliothèque PHP spécialisée dans le routage.
+
+Elle ne construit pas les contrôleurs et ne contient pas les règles métier.
+
+Son rôle principal est de répondre à cette question :
+
+> Quelle route correspond à cette requête HTTP ?
+
+Exemple :
+
+```text
+GET /salles/5
+```
+
+FastRoute cherche une route correspondant à :
+
+```text
+GET /salles/{id:\d+}
+```
+
+Puis il retourne le handler et les paramètres trouvés.
+
+---
+
+# 4. Déclaration des routes
+
+Les routes sont déclarées dans :
+
+```text
+routes/web.php
+```
+
+Le fichier contient uniquement les déclarations de routes.
+
+```php
+<?php
+
+use App\Controller\ReservationController;
+use App\Controller\SalleController;
+use FastRoute\RouteCollector;
+
+return function (RouteCollector $router): void {
+
+    $router->addRoute('GET', '/', [
+        SalleController::class,
+        'index'
+    ]);
+
+    $router->addRoute('GET', '/salles', [
+        SalleController::class,
+        'index'
+    ]);
+
+    $router->addRoute('GET', '/salles/create', [
+        SalleController::class,
+        'create'
+    ]);
+
+    $router->addRoute('POST', '/salles', [
+        SalleController::class,
+        'store'
+    ]);
+
+    $router->addRoute('GET', '/salles/{id:\d+}', [
+        SalleController::class,
+        'show'
+    ]);
+
+    $router->addRoute('GET', '/salles/{id:\d+}/edit', [
+        SalleController::class,
+        'edit'
+    ]);
+
+    $router->addRoute('POST', '/salles/{id:\d+}/edit', [
+        SalleController::class,
+        'update'
+    ]);
+
+    $router->addRoute('GET', '/reservations', [
+        ReservationController::class,
+        'index'
+    ]);
+
+    $router->addRoute('GET', '/reservations/create', [
+        ReservationController::class,
+        'create'
+    ]);
+
+    $router->addRoute('POST', '/reservations', [
+        ReservationController::class,
+        'store'
+    ]);
+
+    $router->addRoute('GET', '/reservations/{id:\d+}', [
+        ReservationController::class,
+        'show'
+    ]);
+
+    $router->addRoute('POST', '/reservations/{id:\d+}/cancel', [
+        ReservationController::class,
+        'cancel'
+    ]);
+};
+```
+
+---
+
+# 5. Explication de `RouteCollector`
+
+Nous importons :
+
+```php
+use FastRoute\RouteCollector;
+```
+
+`RouteCollector` est l'objet fourni par FastRoute qui permet **d'enregistrer les routes**.
+
+Dans :
+
+```php
+function (RouteCollector $router): void
+```
+
+`$router` représente l'objet qui reçoit nos routes.
+
+Par exemple :
+
+```php
+$router->addRoute(
+    'GET',
+    '/salles',
+    [
+        SalleController::class,
+        'index'
+    ]
+);
+```
+
+veut dire :
+
+> Ajoute cette route au routeur.
+
+---
+
+# 6. Pourquoi `return function` ?
+
+Dans `web.php`, nous avons :
+
+```php
+return function (RouteCollector $router): void {
+    // routes
+};
+```
+
+Le fichier retourne donc une fonction.
+
+Dans `public/index.php` :
+
+```php
+$routes = require __DIR__ . '/../routes/web.php';
+```
+
+PHP récupère cette fonction et la stocke dans :
+
+```php
+$routes
+```
+
+On peut ensuite l'exécuter avec :
+
+```php
+$routes($router);
+```
+
+Cela permet de garder la déclaration des routes séparée de la création du dispatcher.
+
+---
+
+# 7. Le handler
+
+Le **handler** est la cible de la route.
+
+Il indique :
+
+> Quelle classe et quelle méthode doivent traiter cette requête ?
+
+Exemple :
+
+```php
+[
+    SalleController::class,
+    'show'
+]
+```
+
+Cela signifie :
+
+```text
+Classe  → SalleController
+Méthode → show
+```
+
+Le handler ne construit pas le contrôleur.
+
+Il indique seulement **quelle action doit être exécutée**.
+
+---
+
+# 8. Pourquoi utiliser `SalleController::class` ?
+
+Nous avons :
+
+```php
+SalleController::class
+```
+
+au lieu de :
+
+```php
+'SalleController'
+```
+
+`::class` permet d'obtenir le nom complet de la classe avec son namespace.
+
+Notre classe est :
+
+```php
+namespace App\Controller;
+```
+
+Donc :
+
+```php
+SalleController::class
+```
+
+correspond à :
+
+```text
+App\Controller\SalleController
+```
+
+Cela permet au conteneur DI de savoir quelle classe il devra récupérer.
+
+---
+
+# 9. Les paramètres dynamiques
+
+Nous avons cette route :
+
+```php
+'/salles/{id:\d+}'
+```
+
+La partie :
+
+```text
+{id:\d+}
+```
+
+représente un paramètre dynamique.
+
+Exemple :
+
+```text
+/salles/5
+```
+
+donne :
+
+```php
+[
+    'id' => '5'
+]
+```
+
+Le `id` est le nom du paramètre.
+
+---
+
+# 10. Pourquoi `\d+` ?
+
+`\d` signifie :
+
+> un chiffre.
+
+Le `+` signifie :
+
+> un ou plusieurs.
+
+Donc :
+
+```text
+\d+
+```
+
+signifie :
+
+> un ou plusieurs chiffres.
+
+Ainsi :
+
+```text
+/salles/5
+/salles/10
+/salles/125
+```
+
+sont acceptés.
+
+Mais :
+
+```text
+/salles/abc
+/salles/test
+```
+
+ne correspondent pas à cette route.
+
+Cette contrainte permet donc de dire que l'identifiant attendu dans l'URL doit être numérique.
+
+---
+
+# 11. Le Front Controller
+
+Notre application utilise :
+
+```text
+public/index.php
+```
+
+comme point d'entrée unique.
+
+Cela signifie que les requêtes passent par :
+
+```text
+public/index.php
+```
+
+avant d'arriver au contrôleur.
+
+Le fonctionnement général est :
+
+```text
+Navigateur
+     ↓
+public/index.php
+     ↓
+FastRoute
+     ↓
+Recherche de la route
+     ↓
+Contrôleur
+     ↓
+Action
+```
+
+C'est le principe du **Front Controller**.
+
+---
+
+# 12. Chargement de Composer
+
+Dans `public/index.php`, nous avons :
+
+```php
+require_once __DIR__ . '/../vendor/autoload.php';
+```
+
+Cette ligne charge l'autoload de Composer.
+
+Elle permet à PHP de retrouver automatiquement les classes du projet et les bibliothèques installées.
+
+Par exemple :
+
+```text
+App\Controller\SalleController
+App\Model\Salle
+FastRoute
+PHP-DI
+Respect\Validation
+```
+
+sans devoir faire manuellement un `require` pour chaque classe.
+
+---
+
+# 13. Chargement des routes
+
+Nous avons :
+
+```php
+$routes = require __DIR__ . '/../routes/web.php';
+```
+
+Cette ligne récupère la fonction retournée par `web.php`.
+
+On peut donc représenter cela ainsi :
+
+```text
+routes/web.php
+      ↓
+fonction de déclaration des routes
+      ↓
+$routes
+```
+
+---
+
+# 14. Création du dispatcher
+
+Nous avons :
+
+```php
+$dispatcher = FastRoute\simpleDispatcher(
+    function (FastRoute\RouteCollector $router) use ($routes): void {
+        $routes($router);
+    }
+);
+```
+
+Le **dispatcher** est l'objet qui va rechercher quelle route correspond à une requête.
+
+On peut voir son rôle comme celui d'un agent qui reçoit :
+
+```text
+GET /salles/5
+```
+
+et cherche dans toutes les routes :
+
+```text
+Quelle route correspond ?
+```
+
+---
+
+# 15. Pourquoi `simpleDispatcher()` ?
+
+```php
+FastRoute\simpleDispatcher(...)
+```
+
+est une fonction fournie par FastRoute permettant de créer le dispatcher.
+
+Elle reçoit une fonction qui va enregistrer toutes les routes.
+
+À l'intérieur :
+
+```php
+$routes($router);
+```
+
+nous exécutons notre fonction provenant de `web.php`.
+
+---
+
+# 16. Pourquoi `use ($routes)` ?
+
+Nous avons :
+
+```php
+function (FastRoute\RouteCollector $router) use ($routes): void
+```
+
+La variable `$routes` a été créée à l'extérieur de cette fonction.
+
+```php
+$routes = require ...;
+```
+
+`use ($routes)` permet à la fonction d'utiliser cette variable.
+
+Ensuite :
+
+```php
+$routes($router);
+```
+
+exécute la fonction contenue dans `$routes`.
+
+---
+
+# 17. Récupérer la méthode HTTP
+
+Nous avons :
+
+```php
+$httpMethod = $_SERVER['REQUEST_METHOD'];
+```
+
+Cette variable permet de connaître la méthode HTTP utilisée.
+
+Exemples :
+
+```text
+GET
+POST
+PUT
+DELETE
+```
+
+Pour consulter une page :
+
+```text
+GET /salles
+```
+
+Pour envoyer un formulaire :
+
+```text
+POST /salles
+```
+
+---
+
+# 18. Récupérer l'URL
+
+Nous avons :
+
+```php
+$uri = parse_url(
+    $_SERVER['REQUEST_URI'],
+    PHP_URL_PATH
+);
+```
+
+`$_SERVER['REQUEST_URI']` contient l'URI demandée.
+
+Par exemple :
+
+```text
+/salles/5?type=cours
+```
+
+Mais FastRoute doit travailler avec le chemin :
+
+```text
+/salles/5
+```
+
+Nous utilisons donc :
+
+```php
+parse_url(
+    $_SERVER['REQUEST_URI'],
+    PHP_URL_PATH
+);
+```
+
+pour récupérer uniquement le chemin.
+
+---
+
+# 19. Qu'est-ce qu'une query string ?
+
+Dans :
+
+```text
+/salles?type=cours
+```
+
+la partie :
+
+```text
+?type=cours
+```
+
+est une **query string**.
+
+Elle contient des paramètres de requête.
+
+Nous ne voulons pas transmettre cette partie au routeur comme faisant partie du chemin.
+
+Ainsi :
+
+```text
+/salles?type=cours
+```
+
+devient :
+
+```text
+/salles
+```
+
+pour FastRoute.
+
+---
+
+# 20. Le dispatch
+
+Nous avons :
+
+```php
+$routeInfo = $dispatcher->dispatch(
+    $httpMethod,
+    $uri
+);
+```
+
+`dispatch()` demande à FastRoute :
+
+> Quelle route correspond à cette méthode HTTP et à cette URI ?
+
+Par exemple :
+
+```text
+GET /salles/5
+```
+
+FastRoute recherche parmi les routes.
+
+S'il trouve :
+
+```php
+GET /salles/{id:\d+}
+```
+
+il retourne un résultat `FOUND`.
+
+---
+
+# 21. Les trois résultats principaux
+
+FastRoute peut principalement retourner :
+
+```text
+FOUND
+NOT_FOUND
+METHOD_NOT_ALLOWED
+```
+
+## FOUND
+
+Une route correspond.
+
+Exemple :
+
+```text
+GET /salles
+```
+
+Résultat :
+
+```text
+FOUND
+```
+
+---
+
+## NOT_FOUND
+
+Aucune route ne correspond.
+
+Exemple :
+
+```text
+GET /bonjour
+```
+
+Si aucune route `/bonjour` n'existe :
+
+```text
+NOT_FOUND
+```
+
+Nous retournons alors :
+
+```php
+http_response_code(404);
+```
+
+Le code HTTP `404` signifie :
+
+> Ressource ou page introuvable.
+
+---
+
+## METHOD_NOT_ALLOWED
+
+Le chemin existe mais la méthode HTTP n'est pas autorisée.
+
+Par exemple, nous avons :
+
+```php
+$router->addRoute('GET', '/salles', ...);
+```
+
+mais le client envoie :
+
+```text
+POST /salles
+```
+
+Dans notre application, nous avons également `POST /salles`, donc prenons un exemple comme :
+
+```text
+DELETE /salles
+```
+
+Si aucune route DELETE n'est déclarée pour `/salles`, FastRoute peut retourner :
+
+```text
+METHOD_NOT_ALLOWED
+```
+
+Nous envoyons alors :
+
+```php
+http_response_code(405);
+```
+
+Le code `405` signifie :
+
+> La méthode HTTP utilisée n'est pas autorisée.
+
+---
+
+# 22. Le header `Allow`
+
+L'énoncé demande également d'ajouter :
+
+```php
+header(
+    'Allow: ' . implode(', ', $routeInfo[1])
+);
+```
+
+`Allow` indique au client quelles méthodes sont autorisées.
+
+Par exemple :
+
+```text
+Allow: GET, POST
+```
+
+`implode(', ', ...)` transforme un tableau comme :
+
+```php
+[
+    'GET',
+    'POST'
+]
+```
+
+en :
+
+```text
+GET, POST
+```
+
+---
+
+# 23. Le bloc `switch`
+
+Notre code utilise :
+
+```php
+switch ($routeInfo[0]) {
+```
+
+Il regarde le résultat fourni par FastRoute.
+
+Nous avons :
+
+```php
+case FastRoute\Dispatcher::NOT_FOUND:
+```
+
+pour le 404.
+
+Puis :
+
+```php
+case FastRoute\Dispatcher::METHOD_NOT_ALLOWED:
+```
+
+pour le 405.
+
+Enfin :
+
+```php
+case FastRoute\Dispatcher::FOUND:
+```
+
+lorsqu'une route est trouvée.
+
+---
+
+# 24. Récupérer le handler
+
+Lorsque FastRoute trouve une route :
+
+```php
+case FastRoute\Dispatcher::FOUND:
+
+    $handler = $routeInfo[1];
+
+    $vars = $routeInfo[2];
+
+    $controllerClass = $handler[0];
+
+    $method = $handler[1];
+
+    break;
+```
+
+Le résultat peut être représenté ainsi :
+
+```php
+$routeInfo = [
+    FOUND,
+    [
+        SalleController::class,
+        'show'
+    ],
+    [
+        'id' => '5'
+    ]
+];
+```
+
+Donc :
+
+```php
+$routeInfo[0]
+```
+
+contient :
+
+```text
+FOUND
+```
+
+```php
+$routeInfo[1]
+```
+
+contient le handler :
+
+```php
+[
+    SalleController::class,
+    'show'
+]
+```
+
+et :
+
+```php
+$routeInfo[2]
+```
+
+contient les paramètres :
+
+```php
+[
+    'id' => '5'
+]
+```
+
+---
+
+# 25. Pourquoi le routeur ne construit-il pas lui-même le contrôleur ?
+
+Le routeur ne doit pas faire :
+
+```php
+new SalleController(...);
+```
+
+Son rôle est uniquement de faire correspondre :
+
+```text
+Méthode + URL
+```
+
+avec :
+
+```text
+Handler
+```
+
+La création du contrôleur appartient au **conteneur de dépendances**.
+
+Nous voulons donc :
+
+```text
+FastRoute
+    ↓
+trouve le handler
+    ↓
+[SalleController::class, 'show']
+    ↓
+Container
+    ↓
+construit SalleController
+    ↓
+injecte ses dépendances
+```
+
+Cela respecte mieux la séparation des responsabilités.
+
+Le conteneur sera configuré à l'étape suivante avec **PHP-DI**.
+
+---
+
+# 26. Différence entre 404 et 405
+
+## 404
+
+Le chemin demandé n'existe pas.
+
+Exemple :
+
+```text
+GET /abc
+```
+
+si aucune route `/abc` n'existe.
+
+```text
+404 Not Found
+```
+
+## 405
+
+Le chemin existe, mais la méthode utilisée n'est pas autorisée.
+
+Exemple :
+
+```text
+DELETE /salles
+```
+
+alors que seules certaines méthodes sont déclarées pour `/salles`.
+
+```text
+405 Method Not Allowed
+```
+
+La différence est donc :
+
+```text
+404 → le chemin n'est pas trouvé
+
+405 → le chemin existe, mais la méthode HTTP ne convient pas
+```
+
+---
+
+# 27. Pourquoi contraindre `id` avec `\d+` ?
+
+Nous avons :
+
+```php
+'/salles/{id:\d+}'
+```
+
+Cela indique que `id` doit être composé de chiffres.
+
+Cela permet d'éviter qu'une URL comme :
+
+```text
+/salles/bonjour
+```
+
+soit considérée comme un identifiant valide.
+
+Exemples acceptés :
+
+```text
+/salles/1
+/salles/10
+/salles/250
+```
+
+Exemples refusés par cette contrainte :
+
+```text
+/salles/abc
+/salles/test
+```
+
+---
+
+# 28. Quel composant interprète le handler ?
+
+FastRoute **trouve et retourne le handler**.
+
+Il ne construit pas le contrôleur.
+
+Le handler est ensuite interprété par notre code de dispatch dans `public/index.php`.
+
+À l'étape suivante, le **conteneur PHP-DI** permettra de récupérer l'objet correspondant à la classe du handler.
+
+On aura donc :
+
+```text
+FastRoute
+    ↓
+trouve le handler
+    ↓
+public/index.php
+    ↓
+Container PHP-DI
+    ↓
+contrôleur
+    ↓
+méthode
+```
+
+---
+
+# 29. Architecture obtenue
+
+Après cette étape, le chemin d'une requête est :
+
+```text
+Navigateur
+     ↓
+HTTP Request
+     ↓
+public/index.php
+     ↓
+FastRoute
+     ↓
+Recherche de la route
+     ↓
+Handler
+     ↓
+Contrôleur
+     ↓
+Action
+```
+
+Par exemple :
+
+```text
+GET /salles/5
+       ↓
+public/index.php
+       ↓
+FastRoute
+       ↓
+GET /salles/{id:\d+}
+       ↓
+[SalleController::class, 'show']
+       ↓
+id = 5
+```
+
+---
+
+# 30. Respect des principes d'architecture
+
+Cette étape respecte plusieurs principes importants.
+
+## Responsabilité unique
+
+`routes/web.php` :
+
+```text
+déclarer les routes
+```
+
+FastRoute :
+
+```text
+chercher une route
+```
+
+`public/index.php` :
+
+```text
+recevoir la requête et orchestrer le dispatch
+```
+
+Le contrôleur :
+
+```text
+traiter l'action HTTP
+```
+
+Chaque élément possède donc une responsabilité claire.
+
+---
+
+## Dependency Injection
+
+Nous ne faisons pas :
+
+```php
+new SalleController(...);
+```
+
+dans `web.php`.
+
+Le contrôleur sera obtenu par le conteneur.
+
+Cela permettra d'injecter automatiquement ses dépendances.
+
+---
+
+## Dependency Inversion
+
+Le contrôleur utilise déjà des interfaces comme :
+
+```php
+SalleRepositoryInterface
+```
+
+et :
+
+```php
+ReservationRepositoryInterface
+```
+
+Il dépend donc d'abstractions plutôt que directement d'une implémentation concrète.
+
+---
+
+## Pas de logique métier dans le routeur
+
+Le routeur ne vérifie pas :
+
+```text
+si une salle est disponible
+si une réservation existe déjà
+si une durée dépasse 4 heures
+```
+
+Ces règles restent dans les services.
+
+Le routeur se contente de diriger la requête.
+
+---
+
+# 31. Code final de `public/index.php`
+
+À la fin de cette étape, nous avons :
+
+```php
+<?php
+
+require_once __DIR__ . '/../vendor/autoload.php';
+
+$routes = require __DIR__ . '/../routes/web.php';
+
+$dispatcher = FastRoute\simpleDispatcher(
+    function (FastRoute\RouteCollector $router) use ($routes): void {
+        $routes($router);
+    }
+);
+
+$httpMethod = $_SERVER['REQUEST_METHOD'];
+
+$uri = parse_url(
+    $_SERVER['REQUEST_URI'],
+    PHP_URL_PATH
+);
+
+$routeInfo = $dispatcher->dispatch(
+    $httpMethod,
+    $uri
+);
+
+switch ($routeInfo[0]) {
+
+    case FastRoute\Dispatcher::NOT_FOUND:
+        http_response_code(404);
+
+        require __DIR__ . '/../templates/error/404.php';
+
+        break;
+
+    case FastRoute\Dispatcher::METHOD_NOT_ALLOWED:
+        http_response_code(405);
+
+        header(
+            'Allow: ' . implode(', ', $routeInfo[1])
+        );
+
+        require __DIR__ . '/../templates/error/405.php';
+
+        break;
+
+    case FastRoute\Dispatcher::FOUND:
+
+        $handler = $routeInfo[1];
+
+        $vars = $routeInfo[2];
+
+        $controllerClass = $handler[0];
+
+        $method = $handler[1];
+
+        break;
+}
+```
+
+---
+
+# 32. Vérification
+
+Vérification de la syntaxe de `routes/web.php` :
+
+```bash
+php -l routes/web.php
+```
+
+Résultat attendu :
+
+```text
+No syntax errors detected in routes/web.php
+```
+
+Vérification de `public/index.php` :
+
+```bash
+php -l public/index.php
+```
+
+Résultat obtenu :
+
+```text
+No syntax errors detected in public/index.php
+```
+
+---
+
+# 33. Commandes Git
+
+Créer la branche :
+
+```bash
+git switch -c feature/10-router
+```
+
+Vérifier les fichiers modifiés :
+
+```bash
+git status
+```
+
+Ajouter les modifications :
+
+```bash
+git add .
+```
+
+Créer le commit :
+
+```bash
+git commit -m "feat: configurer le routage avec FastRoute"
+```
+
+Créer le tag :
+
+```bash
+git tag v0.10.0
+```
+
+Envoyer la branche :
+
+```bash
+git push origin feature/10-router
+```
+
+Envoyer le tag :
+
+```bash
+git push origin v0.10.0
+```
+
+---
+
+# 34. Questions de l'étape 10
+
+### 1. Pourquoi FastRoute ne construit-il pas lui-même le contrôleur ?
+
+Parce que FastRoute est responsable du **routage**, pas de la création des objets.
+
+Son travail est de trouver :
+
+```text
+quelle route correspond ?
+```
+
+et de retourner le handler.
+
+La création du contrôleur et l'injection de ses dépendances seront confiées au conteneur DI.
+
+---
+
+### 2. Quelle est la différence entre 404 et 405 ?
+
+**404** :
+
+> aucune route ne correspond au chemin demandé.
+
+**405** :
+
+> le chemin existe, mais la méthode HTTP utilisée n'est pas autorisée.
+
+---
+
+### 3. Pourquoi contraindre `id` avec `\d+` ?
+
+Parce que `\d+` signifie :
+
+> un ou plusieurs chiffres.
+
+Cela permet de faire correspondre :
+
+```text
+/salles/1
+/salles/25
+/salles/100
+```
+
+mais pas :
+
+```text
+/salles/abc
+```
+
+Cela permet également d'exprimer clairement que l'identifiant attendu est numérique.
+
+---
+
+### 4. Quel composant interprète le handler ?
+
+FastRoute **retourne** le handler.
+
+Notre code de dispatch dans `public/index.php` récupère ce handler.
+
+Ensuite, le conteneur DI sera chargé de récupérer/construire le contrôleur correspondant.
+
+Le fonctionnement complet sera :
+
+```text
+FastRoute
+    ↓
+trouve le handler
+    ↓
+public/index.php
+    ↓
+PHP-DI Container
+    ↓
+Controller
+    ↓
+Action
+```
+
+---
+
+# 35. Ce que j'ai appris dans cette étape
+
+À la fin de cette étape, je dois être capable de définir :
+
+* une route ;
+* un routeur ;
+* FastRoute ;
+* un dispatcher ;
+* un handler ;
+* une méthode HTTP ;
+* une URI ;
+* une query string ;
+* un paramètre dynamique ;
+* une contrainte `\d+` ;
+* une erreur 404 ;
+* une erreur 405 ;
+* le header `Allow` ;
+* le principe du Front Controller ;
+* pourquoi le routeur ne doit pas construire directement les contrôleurs ;
+* pourquoi le conteneur DI interviendra ensuite.
+
+Le flux à retenir est :
+
+```text
+Requête HTTP
+     ↓
+public/index.php
+     ↓
+FastRoute
+     ↓
+Route
+     ↓
+Handler
+     ↓
+Container DI
+     ↓
+Controller
+     ↓
+Action
+```
